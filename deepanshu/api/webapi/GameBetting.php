@@ -77,9 +77,13 @@
 					$sonofgod = 'gelluonduhogu';
 				}
 				
-				// Ensure target tables exist
-				mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$lordjesus` LIKE `bajikattuttate`");
-				mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$sonofgod` LIKE `gelluonduhogu`");
+				// Ensure target tables exist (never run CREATE TABLE LIKE against the same table name)
+				if ($lordjesus !== 'bajikattuttate') {
+					@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$lordjesus` LIKE `bajikattuttate`");
+				}
+				if ($sonofgod !== 'gelluonduhogu') {
+					@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$sonofgod` LIKE `gelluonduhogu`");
+				}
 				
 				if ($amount >= 1 && $betCount >= 1) {
 					// Ensure current active period is tracked in sonofgod table
