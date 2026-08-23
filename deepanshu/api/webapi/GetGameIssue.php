@@ -53,6 +53,18 @@ if ($externalData && isset($externalData['data']['issueNumber'])) {
     $data['typeId'] = $frontendTypeId;
     $data['intervalM'] = ($frontendTypeId == 30 || $frontendTypeId == 4) ? 0.5 : ($frontendTypeId == 1 ? 1 : ($frontendTypeId == 2 ? 3 : 5));
     
+    // In999 JavaScript explicitly runs: .serviceTime.replace(/-/g, "/") and .startTime.replace(/-/g, "/")
+    // Therefore, both must be date strings formatted as 'YYYY-MM-DD HH:MM:SS'!
+    if (is_numeric($data['startTime']) && $data['startTime'] > 10000000000) {
+        $data['startTime'] = date('Y-m-d H:i:s', intval($data['startTime'] / 1000));
+    }
+    if (is_numeric($data['endTime']) && $data['endTime'] > 10000000000) {
+        $data['endTime'] = date('Y-m-d H:i:s', intval($data['endTime'] / 1000));
+    }
+    if (empty($data['serviceTime']) || is_numeric($data['serviceTime'])) {
+        $data['serviceTime'] = date('Y-m-d H:i:s');
+    }
+    
     echo json_encode([
         'code' => 0,
         'msg' => 'Succeed',
@@ -78,10 +90,10 @@ if ($externalData && isset($externalData['data']['issueNumber'])) {
             'serviceNowTime' => date('Y-m-d H:i:s'),
             'data' => [
                 'issueNumber' => (string)$row['atadaaidi'],
-                'startTime' => $startTs * 1000,
-                'endTime' => $endTs * 1000,
-                'openTime' => $endTs * 1000,
-                'serviceTime' => $nowTs * 1000,
+                'startTime' => date('Y-m-d H:i:s', $startTs),
+                'endTime' => date('Y-m-d H:i:s', $endTs),
+                'openTime' => date('Y-m-d H:i:s', $endTs),
+                'serviceTime' => date('Y-m-d H:i:s', $nowTs),
                 'seconds' => max(0, $endTs - $nowTs),
                 'secondsLeft' => max(0, $endTs - $nowTs),
                 'typeId' => $frontendTypeId,
