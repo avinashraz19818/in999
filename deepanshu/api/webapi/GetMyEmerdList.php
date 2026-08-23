@@ -63,7 +63,9 @@
 		$jayshriram = 'bajikattuttate';
 	}
 	
-	mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$jayshriram` LIKE `bajikattuttate`");
+	if ($jayshriram !== 'bajikattuttate') {
+		@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$jayshriram` LIKE `bajikattuttate`");
+	}
 	
 	$offset = ($pageNo - 1) * $pageSize;
 	$samasye = "SELECT kalaparichaya, ojana, menge, wettanzahl, ketebida, phalaphala, sesabida, ergebnis, zufallig, tiarikala
@@ -71,12 +73,16 @@
 	  ORDER BY parichaya DESC LIMIT $pageSize OFFSET $offset";
 	$samasyephalitansa = $conn->query($samasye);
 	
+	$totalQuery = mysqli_query($conn, "SELECT COUNT(*) as total FROM `$jayshriram` WHERE byabaharkarta = '$shonuid'");
+	$totalRow = $totalQuery ? mysqli_fetch_assoc($totalQuery) : null;
+	$totalCount = intval($totalRow['total'] ?? 0);
+	
 	$data = [
 		'list' => [],
 		'pageNo' => $pageNo,
 		'pageSize' => $pageSize,
-		'totalPage' => 1,
-		'totalCount' => 0
+		'totalPage' => max(1, ceil($totalCount / $pageSize)),
+		'totalCount' => $totalCount
 	];
 	
 	if ($samasyephalitansa && $samasyephalitansa->num_rows > 0) {

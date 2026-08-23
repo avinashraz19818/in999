@@ -84,13 +84,13 @@
 					$resultNum = (int)$rrow['phalitansa'];
 				}
 				
-				// If result not found in DB yet, query live VPS API for instant settlement
+				// If result not found in DB yet, query live VPS API direct draw lookup
 				if ($resultNum === null) {
 					$apiType = $matchedConfig['typeId'];
-					$ch = curl_init("https://api.devlopedwithzayro.site/api/webapi/GetNoaverageEmerdList");
+					$ch = curl_init("https://api.devlopedwithzayro.site/api/webapi/GetWinTheLotteryResult");
 					curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 					curl_setopt($ch, CURLOPT_POST, true);
-					curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(["typeId" => $apiType, "pageSize" => 5]));
+					curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(["typeId" => $apiType, "issueNumber" => $issueNumber]));
 					curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
 					curl_setopt($ch, CURLOPT_TIMEOUT, 3);
 					$apiRes = curl_exec($ch);
@@ -98,18 +98,10 @@
 					
 					if ($apiRes) {
 						$apiJson = json_decode($apiRes, true);
-						if (!empty($apiJson['data']['list'])) {
-							foreach ($apiJson['data']['list'] as $item) {
-								if ($item['issueNumber'] == $issueNumber) {
-									$resultNum = (int)$item['number'];
-									$banna = ($resultNum == 0) ? 'red,violet' : (($resultNum == 5) ? 'green,violet' : (in_array($resultNum, [1,3,7,9]) ? 'green' : 'red'));
-									mysqli_query($conn, "INSERT IGNORE INTO `$resTable` (`kalaparichaya`, `bele`, `phalitansa`, `banna`, `phalitansadaprakara`, `dinankavannuracisi`) VALUES ('$issueNumber', '$resultNum', '$resultNum', '$banna', 'api', '$shnunc')");
-									break;
-								}
-							}
-							if ($resultNum === null && !empty($apiJson['data']['list'][0]['number'])) {
-								$resultNum = (int)$apiJson['data']['list'][0]['number'];
-							}
+						if (isset($apiJson['data']['number'])) {
+							$resultNum = (int)$apiJson['data']['number'];
+							$banna = ($resultNum == 0) ? 'red,violet' : (($resultNum == 5) ? 'green,violet' : (in_array($resultNum, [1,3,7,9]) ? 'green' : 'red'));
+							mysqli_query($conn, "INSERT IGNORE INTO `$resTable` (`kalaparichaya`, `bele`, `phalitansa`, `banna`, `phalitansadaprakara`, `dinankavannuracisi`) VALUES ('$issueNumber', '$resultNum', '$resultNum', '$banna', 'api', '$shnunc')");
 						}
 					}
 				}
