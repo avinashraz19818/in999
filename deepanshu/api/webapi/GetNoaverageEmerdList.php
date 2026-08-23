@@ -43,11 +43,11 @@ if ($resTable !== 'gellaluhogiondu_phalitansa') {
     @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$resTable` LIKE `gellaluhogiondu_phalitansa`");
 }
 
-$now = time();
-$dayStart = strtotime(date('Y-m-d 00:00:00', $now));
-$secondsToday = $now - $dayStart;
-$currentSeq = intval(floor($secondsToday / $intervalSec)) + 1;
-$datePrefix = date('Ymd', $now);
+$nowUtc = time();
+$dayStartUtc = strtotime(gmdate('Y-m-d 00:00:00', $nowUtc));
+$secondsTodayUtc = $nowUtc - $dayStartUtc;
+$currentSeq = intval(floor($secondsTodayUtc / $intervalSec)) + 1;
+$datePrefix = gmdate('Ymd', $nowUtc);
 
 // Helper function to resolve deterministic result
 function get_draw_result($conn, $resTable, $gameTag, $issueNum, $drawTime) {
@@ -85,8 +85,8 @@ for ($i = 0; $i < $pageSize; $i++) {
     if ($seq <= 0) break;
     
     $issueNum = $datePrefix . $typePrefix . sprintf('%04d', $seq);
-    $drawTs = $dayStart + ($seq * $intervalSec);
-    $drawTimeStr = date('Y-m-d H:i:s', $drawTs);
+    $drawTs = $dayStartUtc + ($seq * $intervalSec);
+    $drawTimeStr = date('Y-m-d H:i:s', $drawTs + (5.5 * 3600)); // Display in IST
     
     $draw = get_draw_result($conn, $resTable, $gameTag, $issueNum, $drawTimeStr);
     $num = $draw['number'];

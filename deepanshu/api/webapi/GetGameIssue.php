@@ -38,24 +38,26 @@ if ($frontendTypeId == 30 || $frontendTypeId == 4 || $frontendTypeId == 0) {
     $sonofgod = 'gelluonduhogu';
 }
 
-$now = time();
-$dayStart = strtotime(date('Y-m-d 00:00:00', $now));
-$secondsToday = $now - $dayStart;
-$seqToday = intval(floor($secondsToday / $intervalSec)) + 1;
+// Global WinGo standard uses UTC midnight for issue sequence numbering
+$nowUtc = time();
+$dayStartUtc = strtotime(gmdate('Y-m-d 00:00:00', $nowUtc));
+$secondsTodayUtc = $nowUtc - $dayStartUtc;
+$seqToday = intval(floor($secondsTodayUtc / $intervalSec)) + 1;
 
-$currentStartTs = $dayStart + (($seqToday - 1) * $intervalSec);
+$currentStartTs = $dayStartUtc + (($seqToday - 1) * $intervalSec);
 $currentEndTs = $currentStartTs + $intervalSec;
-$secondsLeft = max(0, $currentEndTs - $now);
+$secondsLeft = max(0, $currentEndTs - $nowUtc);
 
-$datePrefix = date('Ymd', $now);
+$datePrefix = gmdate('Ymd', $nowUtc);
 $activeIssue = $datePrefix . $typePrefix . sprintf('%04d', $seqToday);
 $nextIssue = $datePrefix . $typePrefix . sprintf('%04d', $seqToday + 1);
 
-$startTimeStr = date('Y-m-d H:i:s', $currentStartTs);
-$endTimeStr = date('Y-m-d H:i:s', $currentEndTs);
-$serverTimeStr = date('Y-m-d H:i:s', $now);
+$nowIst = time();
+$startTimeStr = date('Y-m-d H:i:s', $nowIst - ($nowUtc - $currentStartTs));
+$endTimeStr = date('Y-m-d H:i:s', $nowIst + $secondsLeft);
+$serverTimeStr = date('Y-m-d H:i:s', $nowIst);
 
-// Auto register in local DB
+// Auto register active issue in local DB
 if ($sonofgod !== 'gelluonduhogu') {
     @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$sonofgod` LIKE `gelluonduhogu`");
 }
@@ -81,7 +83,7 @@ echo json_encode([
         'typeId'          => $frontendTypeId,
         'serverTime'      => $serverTimeStr,
         'serviceNowTime'  => $serverTimeStr,
-        'serverTimestamp' => $now
+        'serverTimestamp' => $nowIst
     ]
 ]);
 exit;
