@@ -43,74 +43,78 @@ if ($resTable !== 'gellaluhogiondu_phalitansa') {
     @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$resTable` LIKE `gellaluhogiondu_phalitansa`");
 }
 
-$nowUtc = time();
-$dayStartUtc = strtotime(gmdate('Y-m-d 00:00:00', $nowUtc));
-$secondsTodayUtc = $nowUtc - $dayStartUtc;
-$currentSeq = intval(floor($secondsTodayUtc / $intervalSec)) + 1;
-$datePrefix = gmdate('Ymd', $nowUtc);
+$startOffset = ($pageNo - 1) * $pageSize;
+$list = [];
 
-// Helper function to resolve deterministic result
-function get_draw_result($conn, $resTable, $gameTag, $issueNum, $drawTime) {
-    $q = mysqli_query($conn, "SELECT phalitansa, banna, bele FROM `$resTable` WHERE kalaparichaya = '$issueNum' LIMIT 1");
-    if ($q && mysqli_num_rows($q) > 0) {
-        $row = mysqli_fetch_assoc($q);
-        return [
-            'number' => (int)$row['phalitansa'],
-            'color'  => (string)$row['banna'],
-            'premium'=> (string)$row['bele']
+// 1. Fetch real official results from DB table
+$res = mysqli_query($conn, "SELECT kalaparichaya, phalitansa, banna, bele, dinankavannuracisi FROM `$resTable` ORDER BY kalaparichaya DESC LIMIT $pageSize OFFSET $startOffset");
+if ($res && mysqli_num_rows($res) > 0) {
+    while ($row = mysqli_fetch_assoc($res)) {
+        $num = (int)$row['phalitansa'];
+        $isBig = ($num >= 5);
+        $list[] = [
+            'issueNumber'  => (string)$row['kalaparichaya'],
+            'issue_number' => (string)$row['kalaparichaya'],
+            'number'       => (string)$num,
+            'drawNumber'   => (string)$num,
+            'colour'       => (string)$row['banna'],
+            'color'        => (string)$row['banna'],
+            'premium'      => (string)$row['bele'],
+            'sum'          => (int)$num,
+            'state'        => 1,
+            'openTime'     => (string)$row['dinankavannuracisi'],
+            'drawTime'     => (string)$row['dinankavannuracisi'],
+            'typeId'       => $frontendTypeId,
+            'isBig'        => $isBig,
+            'bs'           => $isBig ? 'big' : 'small'
         ];
     }
-    
-    // Deterministic hash algorithm matching WinGo standards
-    $hash = hexdec(substr(md5($gameTag . "_" . $issueNum), 0, 8));
-    $num = $hash % 10;
-    $prem = ($hash % 90000) + 10000;
-    $banna = ($num == 0) ? 'red,violet' : (($num == 5) ? 'green,violet' : (in_array($num, [1,3,7,9]) ? 'green' : 'red'));
-    
-    @mysqli_query($conn, "INSERT IGNORE INTO `$resTable` (`kalaparichaya`, `bele`, `phalitansa`, `banna`, `phalitansadaprakara`, `dinankavannuracisi`) VALUES ('$issueNum', '$prem', '$num', '$banna', 'auto', '$drawTime')");
-    
-    return [
-        'number' => $num,
-        'color'  => $banna,
-        'premium'=> (string)$prem
-    ];
 }
 
-$list = [];
-$startOffset = ($pageNo - 1) * $pageSize;
+// 2. Fallback to UTC sequence generation if table is empty
+if (empty($list)) {
+    $nowUtc = time();
+    $dayStartUtc = strtotime(gmdate('Y-m-d 00:00:00', $nowUtc));
+    $secondsTodayUtc = $nowUtc - $dayStartUtc;
+    $currentSeq = intval(floor($secondsTodayUtc / $intervalSec)) + 1;
+    $datePrefix = gmdate('Ymd', $nowUtc);
 
-// Completed draws are all sequences strictly < current active sequence
-for ($i = 0; $i < $pageSize; $i++) {
-    $seq = $currentSeq - 1 - $startOffset - $i;
-    if ($seq <= 0) break;
-    
-    $issueNum = $datePrefix . $typePrefix . sprintf('%04d', $seq);
-    $drawTs = $dayStartUtc + ($seq * $intervalSec);
-    $drawTimeStr = date('Y-m-d H:i:s', $drawTs + (5.5 * 3600)); // Display in IST
-    
-    $draw = get_draw_result($conn, $resTable, $gameTag, $issueNum, $drawTimeStr);
-    $num = $draw['number'];
-    $isBig = ($num >= 5);
-    
-    $list[] = [
-        'issueNumber'  => $issueNum,
-        'issue_number' => $issueNum,
-        'number'       => (string)$num,
-        'drawNumber'   => (string)$num,
-        'colour'       => $draw['color'],
-        'color'        => $draw['color'],
-        'premium'      => $draw['premium'],
-        'sum'          => (int)$num,
-        'state'        => 1,
-        'openTime'     => $drawTimeStr,
-        'drawTime'     => $drawTimeStr,
-        'typeId'       => $frontendTypeId,
-        'isBig'        => $isBig,
-        'bs'           => $isBig ? 'big' : 'small'
-    ];
+    for ($i = 0; $i < $pageSize; $i++) {
+        $seq = $currentSeq - 1 - $startOffset - $i;
+        if ($seq <= 0) break;
+        
+        $issueNum = $datePrefix . $typePrefix . sprintf('%04d', $seq);
+        $drawTs = $dayStartUtc + ($seq * $intervalSec);
+        $drawTimeStr = date('Y-m-d H:i:s', $drawTs + (5.5 * 3600));
+        
+        $hash = hexdec(substr(md5($gameTag . "_" . $issueNum), 0, 8));
+        $num = $hash % 10;
+        $prem = ($hash % 90000) + 10000;
+        $banna = ($num == 0) ? 'red,violet' : (($num == 5) ? 'green,violet' : (in_array($num, [1,3,7,9]) ? 'green' : 'red'));
+        $isBig = ($num >= 5);
+        
+        $list[] = [
+            'issueNumber'  => $issueNum,
+            'issue_number' => $issueNum,
+            'number'       => (string)$num,
+            'drawNumber'   => (string)$num,
+            'colour'       => $banna,
+            'color'        => $banna,
+            'premium'      => (string)$prem,
+            'sum'          => (int)$num,
+            'state'        => 1,
+            'openTime'     => $drawTimeStr,
+            'drawTime'     => $drawTimeStr,
+            'typeId'       => $frontendTypeId,
+            'isBig'        => $isBig,
+            'bs'           => $isBig ? 'big' : 'small'
+        ];
+    }
 }
 
-$totalCount = max(100, $currentSeq - 1);
+$countRes = mysqli_query($conn, "SELECT COUNT(*) as total FROM `$resTable`");
+$countRow = $countRes ? mysqli_fetch_assoc($countRes) : null;
+$totalCount = max(100, intval($countRow['total'] ?? 100));
 $totalPage = max(1, ceil($totalCount / $pageSize));
 
 echo json_encode([
