@@ -1,142 +1,93 @@
 <?php 
-	include "../../conn.php";
-	include "../../functions2.php";
-	
-	header('Content-Type: application/json; charset=utf-8');
-	header('Strict-Transport-Security: max-age=31536000');
-	header('Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, Authorization');
-	header('Access-Control-Allow-Credentials: true');
-	$origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '';
-	header('Access-Control-Allow-Origin: ' . $origin);
-	header('vary: Origin');
-	
-	date_default_timezone_set("Asia/Kolkata");
-	$shnunc = date("Y-m-d H:i:s");
-	$res = [
-		'code' => 11,
-		'msg' => 'Method not allowed',
-		'msgCode' => 12,
-		'serviceNowTime' => $shnunc,
-	];
-	$shonubody = file_get_contents("php://input");
-	$shonupost = json_decode($shonubody, true);
-	
-	if ($_SERVER['REQUEST_METHOD'] != 'GET') {
-		if (isset($shonupost['language']) && isset($shonupost['random']) && isset($shonupost['signature']) && isset($shonupost['timestamp'])) {
-			$language = htmlspecialchars(mysqli_real_escape_string($conn, $shonupost['language']));
-			$random = htmlspecialchars(mysqli_real_escape_string($conn, $shonupost['random']));
-			$signature = htmlspecialchars(mysqli_real_escape_string($conn, $shonupost['signature']));
-			$typeId = htmlspecialchars(mysqli_real_escape_string($conn, $shonupost['typeId']));
-			$shonustr = '{"language":'.$language.',"random":"'.$random.'","typeId":'.$typeId.'}';
-			$shonusign = strtoupper(md5($shonustr));
-			if($shonusign == $signature){
-				$bearer = explode(" ", $_SERVER['HTTP_AUTHORIZATION']);
-				$author = $bearer[1];				
-				$is_jwt_valid = is_jwt_valid($author);
-				$data_auth = json_decode($is_jwt_valid, 1);
-				if($data_auth['status'] === 'Success') {
-					$sesquery = "SELECT akshinak
-					  FROM shonu_subjects
-					  WHERE akshinak = '$author'";
-					$sesresult=$conn->query($sesquery);
-					$sesnum = mysqli_num_rows($sesresult);
-					if($sesnum == 1){
-						if($typeId == 1){
-							$samasye = "SELECT atadaaidi, dinankavannuracisi
-							  FROM gelluonduhogu
-							  ORDER BY kramasankhye DESC LIMIT 1";
-							$samasyephalitansa=$conn->query($samasye);
-							$samasyesreni = mysqli_fetch_array($samasyephalitansa);
-							
-							$data['issueNumber'] = $samasyesreni['atadaaidi'];
-							$data['startTime'] = $samasyesreni['dinankavannuracisi'];
-							$ondusamaya = strtotime('+1 minute', strtotime($samasyesreni['dinankavannuracisi']));
-							$data['endTime'] = date('Y-m-d H:i:s', $ondusamaya);
-							$data['serviceTime'] = date('Y-m-d H:i:s');
-							$data['intervalM'] = 1;				
-						}
-						else if($typeId == 2){
-							$samasye = "SELECT atadaaidi, dinankavannuracisi
-							  FROM gelluonduhogu_drei
-							  ORDER BY kramasankhye DESC LIMIT 1";
-							$samasyephalitansa=$conn->query($samasye);
-							$samasyesreni = mysqli_fetch_array($samasyephalitansa);
-							
-							$data['issueNumber'] = $samasyesreni['atadaaidi'];
-							$data['startTime'] = $samasyesreni['dinankavannuracisi'];
-							$ondusamaya = strtotime('+1 minute', strtotime($samasyesreni['dinankavannuracisi']));
-							$data['endTime'] = date('Y-m-d H:i:s', $ondusamaya);
-							$data['serviceTime'] = date('Y-m-d H:i:s');
-							$data['intervalM'] = 1;				
-						}
-						else if($typeId == 3){
-							$samasye = "SELECT atadaaidi, dinankavannuracisi
-							  FROM gelluonduhogu_funf
-							  ORDER BY kramasankhye DESC LIMIT 1";
-							$samasyephalitansa=$conn->query($samasye);
-							$samasyesreni = mysqli_fetch_array($samasyephalitansa);
-							
-							$data['issueNumber'] = $samasyesreni['atadaaidi'];
-							$data['startTime'] = $samasyesreni['dinankavannuracisi'];
-							$ondusamaya = strtotime('+1 minute', strtotime($samasyesreni['dinankavannuracisi']));
-							$data['endTime'] = date('Y-m-d H:i:s', $ondusamaya);
-							$data['serviceTime'] = date('Y-m-d H:i:s');
-							$data['intervalM'] = 1;				
-						}
-else if($typeId == 4 || $typeId == 30){
-							$samasye = "SELECT atadaaidi, dinankavannuracisi
-  FROM gelluonduhogu30
-							  ORDER BY kramasankhye DESC LIMIT 1";
-							$samasyephalitansa=$conn->query($samasye);
-							$samasyesreni = mysqli_fetch_array($samasyephalitansa);
-							
-							$data['issueNumber'] = $samasyesreni['atadaaidi'];
-							$data['startTime'] = $samasyesreni['dinankavannuracisi'];
-$ondusamaya = strtotime('+30 seconds', strtotime($samasyesreni['dinankavannuracisi']));
-							$data['endTime'] = date('Y-m-d H:i:s', $ondusamaya);
-							$data['serviceTime'] = date('Y-m-d H:i:s');
-$data['intervalM'] = 0.5;
-						}
-						$res['data'] = $data;
-						$res['code'] = 0;
-						$res['msg'] = 'Succeed';
-						$res['msgCode'] = 0;
-						http_response_code(200);
-						echo json_encode($res);	
-					}
-					else{
-						$res['code'] = 4;
-						$res['msg'] = 'No operation permission';
-						$res['msgCode'] = 2;
-						http_response_code(401);
-						echo json_encode($res);
-					}					
-				}
-				else{					
-					$res['code'] = 4;
-					$res['msg'] = 'No operation permission';
-					$res['msgCode'] = 2;
-					http_response_code(401);
-					echo json_encode($res);					
-				}
-			}
-			else{
-				$res['code'] = 5;
-				$res['msg'] = 'Wrong signature';
-				$res['msgCode'] = 3;
-				http_response_code(200);
-				echo json_encode($res);				
-			}
-		}
-		else{
-			$res['code'] = 7;
-			$res['msg'] = 'Param is Invalid';
-			$res['msgCode'] = 6;
-			http_response_code(200);
-			echo json_encode($res);			
-		}		
-	} else {		
-		http_response_code(405);
-		echo json_encode($res);
-	}
-?>
+include "../../conn.php";
+include "../../functions2.php";
+
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, Authorization');
+header('Access-Control-Allow-Credentials: true');
+$origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '*';
+header('Access-Control-Allow-Origin: ' . $origin);
+
+date_default_timezone_set("Asia/Kolkata");
+$shonubody = file_get_contents("php://input");
+$shonupost = json_decode($shonubody, true);
+
+// Map frontend typeId (30s = 4 or 30 -> 1, 1m = 1 -> 2, 3m = 2 -> 3, 5m = 3 -> 4)
+function mapTypeId($frontendTypeId) {
+    $map = [
+        30 => 1,  // WinGo 30s
+        4  => 1,  // WinGo 30s tab
+        1  => 2,  // WinGo 1Min
+        2  => 3,  // WinGo 3Min
+        3  => 4,  // WinGo 5Min
+        5  => 5,  // WinGo 10Min
+    ];
+    return $map[$frontendTypeId] ?? $frontendTypeId;
+}
+
+function callExternalApi($endpoint, $payload) {
+    $apiBaseUrl = "https://api.devlopedwithzayro.site/api/webapi";
+    $ch = curl_init($apiBaseUrl . $endpoint);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($httpCode == 200 && $response) {
+        return json_decode($response, true);
+    }
+    return null;
+}
+
+$frontendTypeId = isset($shonupost['typeId']) ? intval($shonupost['typeId']) : (isset($_GET['typeId']) ? intval($_GET['typeId']) : 1);
+$typeId = mapTypeId($frontendTypeId);
+
+$externalData = callExternalApi("/GetGameIssue", ["typeId" => $typeId]);
+
+if ($externalData && isset($externalData['data']['issueNumber'])) {
+    $data = $externalData['data'];
+    $data['typeId'] = $frontendTypeId;
+    $data['intervalM'] = ($frontendTypeId == 30 || $frontendTypeId == 4) ? 0.5 : ($frontendTypeId == 1 ? 1 : ($frontendTypeId == 2 ? 3 : 5));
+    
+    echo json_encode([
+        'code' => 0,
+        'msg' => 'Succeed',
+        'msgCode' => 0,
+        'serviceNowTime' => date('Y-m-d H:i:s'),
+        'data' => $data
+    ]);
+    exit;
+} else {
+    // Local DB Fallback
+    $intervalSec = ($frontendTypeId == 30 || $frontendTypeId == 4) ? 30 : ($frontendTypeId == 1 ? 60 : ($frontendTypeId == 2 ? 180 : 300));
+    $tbl = ($frontendTypeId == 30 || $frontendTypeId == 4) ? 'gelluonduhogu30' : ($frontendTypeId == 1 ? 'gelluonduhogu' : ($frontendTypeId == 2 ? 'gelluonduhogu_drei' : 'gelluonduhogu_funf'));
+    $row = mysqli_fetch_assoc(mysqli_query($conn, "SELECT atadaaidi, dinankavannuracisi FROM $tbl ORDER BY kramasankhye DESC LIMIT 1"));
+    
+    if ($row) {
+        $startTs = strtotime($row['dinankavannuracisi']);
+        $endTs = $startTs + $intervalSec;
+        $nowTs = time();
+        echo json_encode([
+            'code' => 0,
+            'msg' => 'Succeed',
+            'msgCode' => 0,
+            'serviceNowTime' => date('Y-m-d H:i:s'),
+            'data' => [
+                'issueNumber' => (string)$row['atadaaidi'],
+                'startTime' => $startTs * 1000,
+                'endTime' => $endTs * 1000,
+                'openTime' => $endTs * 1000,
+                'serviceTime' => $nowTs * 1000,
+                'seconds' => max(0, $endTs - $nowTs),
+                'secondsLeft' => max(0, $endTs - $nowTs),
+                'typeId' => $frontendTypeId,
+                'intervalM' => $intervalSec / 60
+            ]
+        ]);
+        exit;
+    }
+}
