@@ -69,14 +69,14 @@
 						}
 						if($betCount >= 1){
 							if($amount >= 1){
-								// Ensure current period is registered in DB
+								// Ensure current active period is tracked
 								$samasye = "SELECT atadaaidi
 								  FROM ".$sonofgod."
 								  ORDER BY kramasankhye DESC LIMIT 1";
 								$samasyephalitansa=$conn->query($samasye);
 								$samasyesreni = mysqli_fetch_array($samasyephalitansa);
 								
-								// Auto sync current period if not yet in table
+								// Auto sync current period in table
 								if (empty($samasyesreni['atadaaidi']) || $samasyesreni['atadaaidi'] != $issuenumber) {
 									mysqli_query($conn, "INSERT INTO `".$sonofgod."` (`atadaaidi`, `dinankavannuracisi`) VALUES ('".$issuenumber."', '".$shnunc."')");
 								}
@@ -99,7 +99,7 @@
 									include "vip.php";
 									$res['data'] = null;
 									$res['code'] = 0;
-									$res['msg'] = 'Succeed';
+									$res['msg'] = 'Bet Successful';
 									$res['msgCode'] = 0;
 									http_response_code(200);
 									echo json_encode($res);	
