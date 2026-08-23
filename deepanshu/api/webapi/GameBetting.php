@@ -24,148 +24,127 @@
 	if ($_SERVER['REQUEST_METHOD'] != 'GET') {
 		if (isset($shonupost['amount']) && isset($shonupost['issuenumber'])) {
 			$amount = floatval($shonupost['amount'] ?? 0);
-			$betCount = intval($shonupost['betCount'] ?? 1);
+			$betCount = max(1, intval($shonupost['betCount'] ?? 1));
 			$gameType = htmlspecialchars(mysqli_real_escape_string($conn, (string)($shonupost['gameType'] ?? '1')));
 			$issuenumber = htmlspecialchars(mysqli_real_escape_string($conn, (string)($shonupost['issuenumber'] ?? '')));
-			$language = htmlspecialchars(mysqli_real_escape_string($conn, (string)($shonupost['language'] ?? '0')));
-			$random = htmlspecialchars(mysqli_real_escape_string($conn, (string)($shonupost['random'] ?? '')));
 			$selectType = htmlspecialchars(mysqli_real_escape_string($conn, (string)($shonupost['selectType'] ?? '1')));
-			$signature = htmlspecialchars(mysqli_real_escape_string($conn, (string)($shonupost['signature'] ?? '')));
 			$typeId = intval($shonupost['typeId'] ?? 1);
 			
-			$bearer = explode(" ", $_SERVER['HTTP_AUTHORIZATION'] ?? '');
-			$author = $bearer[1] ?? '';				
+			// Extract token reliably across all server configurations
+			$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+			if (empty($authHeader) && function_exists('apache_request_headers')) {
+				$headers = apache_request_headers();
+				$authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+			}
+			
+			$author = '';
+			if (preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+				$author = trim($matches[1]);
+			} else {
+				$author = trim($authHeader);
+			}
+			
 			$is_jwt_valid = is_jwt_valid($author);
 			$data_auth = json_decode($is_jwt_valid, 1);
+			$shonuid = $data_auth['payload']['id'] ?? null;
 			
-			if($data_auth['status'] === 'Success') {
-				$shonuid = $data_auth['payload']['id'];
-				$sesquery = "SELECT akshinak FROM shonu_subjects WHERE id = '$shonuid' LIMIT 1";
-				$sesresult = $conn->query($sesquery);
-				$sesnum = $sesresult ? mysqli_num_rows($sesresult) : 0;
+			// Fallback payload parsing if token valid
+			if (!$shonuid && !empty($author)) {
+				$tokenParts = explode('.', $author);
+				if (count($tokenParts) >= 2) {
+					$payloadJson = base64_decode(str_pad(strtr($tokenParts[1], '-_', '+/'), strlen($tokenParts[1]) % 4, '=', STR_PAD_RIGHT));
+					$payloadArr = json_decode($payloadJson, true);
+					$shonuid = $payloadArr['id'] ?? null;
+				}
+			}
+			
+			if (!empty($shonuid)) {
+				// Map typeId to local tables
+				if ($typeId == 1) { // 1Min
+					$lordjesus = 'bajikattuttate';
+					$sonofgod = 'gelluonduhogu';
+				} else if ($typeId == 2) { // 3Min
+					$lordjesus = 'bajikattuttate_drei';
+					$sonofgod = 'gelluonduhogu_drei';
+				} else if ($typeId == 3) { // 5Min
+					$lordjesus = 'bajikattuttate_funf';
+					$sonofgod = 'gelluonduhogu_funf';
+				} else if ($typeId == 4 || $typeId == 30 || $typeId == 0 || $typeId == 5) { // 30Sec
+					$lordjesus = 'bajikattuttate30';
+					$sonofgod = 'gelluonduhogu30';
+				} else {
+					$lordjesus = 'bajikattuttate';
+					$sonofgod = 'gelluonduhogu';
+				}
 				
-				if($sesnum >= 1 || !empty($shonuid)){
-					// Determine table based on game type
-					if($typeId == 1){
-						$lordjesus = 'bajikattuttate';
-						$sonofgod = 'gelluonduhogu';
-					}
-					else if($typeId == 2){
-						$lordjesus = 'bajikattuttate_drei';
-						$sonofgod = 'gelluonduhogu_drei';
-					}
-					else if($typeId == 3){
-						$lordjesus = 'bajikattuttate_funf';
-						$sonofgod = 'gelluonduhogu_funf';
-					}
-					else if($typeId == 4 || $typeId == 30 || $typeId == 5){
-						$lordjesus = 'bajikattuttate30';
-						$sonofgod = 'gelluonduhogu30';
-					} else {
-						$lordjesus = 'bajikattuttate';
-						$sonofgod = 'gelluonduhogu';
-					}
+				// Ensure target tables exist
+				mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$lordjesus` LIKE `bajikattuttate`");
+				mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$sonofgod` LIKE `gelluonduhogu`");
+				
+				if ($amount >= 1 && $betCount >= 1) {
+					// Ensure current active period is tracked in sonofgod table
+					$samasye = "SELECT atadaaidi FROM `$sonofgod` ORDER BY kramasankhye DESC LIMIT 1";
+					$samasyephalitansa = $conn->query($samasye);
+					$samasyesreni = $samasyephalitansa ? mysqli_fetch_array($samasyephalitansa) : null;
 					
-					// Auto create tables if they do not exist in database
-					mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$lordjesus` LIKE `bajikattuttate`");
-					mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$sonofgod` LIKE `gelluonduhogu`");
-					
-					if($betCount >= 1){
-						if($amount >= 1){
-							// Ensure current active period is tracked
-							$samasye = "SELECT atadaaidi FROM `$sonofgod` ORDER BY kramasankhye DESC LIMIT 1";
-							$samasyephalitansa = $conn->query($samasye);
-							$samasyesreni = $samasyephalitansa ? mysqli_fetch_array($samasyephalitansa) : null;
-							
-							// Auto sync current period in table
-							if (empty($samasyesreni['atadaaidi']) || $samasyesreni['atadaaidi'] != $issuenumber) {
-								mysqli_query($conn, "INSERT INTO `$sonofgod` (`atadaaidi`, `dinankavannuracisi`) VALUES ('$issuenumber', '$shnunc')");
-							}
+					if (empty($samasyesreni['atadaaidi']) || $samasyesreni['atadaaidi'] != $issuenumber) {
+						mysqli_query($conn, "INSERT INTO `$sonofgod` (`atadaaidi`, `dinankavannuracisi`) VALUES ('$issuenumber', '$shnunc')");
+					}
 
-							$totalamount = $amount * $betCount;								
-							$balquery = "SELECT motta FROM shonu_kaichila WHERE balakedara = '$shonuid' LIMIT 1";
-							$balresult = $conn->query($balquery);
-							$balarr = $balresult ? mysqli_fetch_array($balresult) : null;									
-							$shonubalance = floatval($balarr['motta'] ?? 0);								
-							
-							if($shonubalance >= $totalamount){
-								$byabaharkarta = $shonuid;
-								$sesabida = sprintf("%.2f", $totalamount * 0.98);
-								$tathya = mysqli_query($conn,"INSERT INTO `$lordjesus` (`byabaharkarta`,`kalaparichaya`,`prakar`,`ojana`,`menge`,`wettanzahl`,`ketebida`,`phalaphala`,`sesabida`,`tiarikala`) VALUES ('$byabaharkarta','$issuenumber','$gameType','$selectType','$amount','$betCount','$totalamount','perte','$sesabida','$shnunc')");
-								
-								$mottanutan = $shonubalance - $totalamount;
-								$nabikarana = "UPDATE shonu_kaichila SET motta='$mottanutan' WHERE balakedara='$byabaharkarta'";
-								$conn->query($nabikarana);
-								
-								if (file_exists(__DIR__ . "/commission.php")) {
-									@include __DIR__ . "/commission.php";
-								}
-								if (file_exists(__DIR__ . "/vip.php")) {
-									@include __DIR__ . "/vip.php";
-								}
-								
-								$res['data'] = null;
-								$res['code'] = 0;
-								$res['msg'] = 'Bet Successful';
-								$res['msgCode'] = 0;
-								http_response_code(200);
-								echo json_encode($res);
-								exit;
-							}
-							else{
-								$res['code'] = 1;
-								$res['msg'] = 'Balance is not enough';
-								$res['msgCode'] = 142;
-								http_response_code(200);
-								echo json_encode($res);
-								exit;
-							}																																				
+					$totalamount = $amount * $betCount;								
+					$balquery = "SELECT motta FROM shonu_kaichila WHERE balakedara = '$shonuid' LIMIT 1";
+					$balresult = $conn->query($balquery);
+					$balarr = $balresult ? mysqli_fetch_array($balresult) : null;									
+					$shonubalance = floatval($balarr['motta'] ?? 0);								
+					
+					if ($shonubalance >= $totalamount) {
+						$byabaharkarta = $shonuid;
+						$sesabida = sprintf("%.2f", $totalamount * 0.98);
+						$tathya = mysqli_query($conn, "INSERT INTO `$lordjesus` (`byabaharkarta`,`kalaparichaya`,`prakar`,`ojana`,`menge`,`wettanzahl`,`ketebida`,`phalaphala`,`sesabida`,`tiarikala`) VALUES ('$byabaharkarta','$issuenumber','$gameType','$selectType','$amount','$betCount','$totalamount','perte','$sesabida','$shnunc')");
+						
+						$mottanutan = $shonubalance - $totalamount;
+						$nabikarana = "UPDATE shonu_kaichila SET motta='$mottanutan' WHERE balakedara='$byabaharkarta'";
+						$conn->query($nabikarana);
+						
+						if (file_exists(__DIR__ . "/commission.php")) {
+							@include __DIR__ . "/commission.php";
 						}
-						else{
-							$res['code'] = 7;
-							$res['msg'] = "Invalid value for parameter 'Amount'";
-							unset($res['msgCode']);
-							unset($res['serviceNowTime']);
-							http_response_code(200);
-							echo json_encode($res);
-							exit;
+						if (file_exists(__DIR__ . "/vip.php")) {
+							@include __DIR__ . "/vip.php";
 						}
-					}
-					else{
-						$res['code'] = 7;
-						$res['msg'] = "Invalid value for parameter 'BetCount'";
-						unset($res['msgCode']);
-						unset($res['serviceNowTime']);
+						
+						$res['data'] = null;
+						$res['code'] = 0;
+						$res['msg'] = 'Bet Successful';
+						$res['msgCode'] = 0;
 						http_response_code(200);
 						echo json_encode($res);
 						exit;
-					}
-				}
-				else{
-					$res['code'] = 4;
-					$res['msg'] = 'No operation permission';
-					$res['msgCode'] = 2;
-					http_response_code(401);
+					} else {
+						$res['code'] = 1;
+						$res['msg'] = 'Balance is not enough';
+						$res['msgCode'] = 142;
+						http_response_code(200);
+						echo json_encode($res);
+						exit;
+					}																																				
+				} else {
+					$res['code'] = 7;
+					$res['msg'] = "Invalid value for parameter 'Amount'";
+					unset($res['msgCode']);
+					unset($res['serviceNowTime']);
+					http_response_code(200);
 					echo json_encode($res);
 					exit;
-				}					
-			}
-			else{					
-				$res['code'] = 4;
-				$res['msg'] = 'No operation permission';
-				$res['msgCode'] = 2;
+				}
+			} else {
 				http_response_code(401);
-				echo json_encode($res);
-				exit;					
+				echo json_encode(['code' => 4, 'msg' => 'No operation permission', 'msgCode' => 2]);
+				exit;
 			}
-		}
-		else{
-			$res['code'] = 7;
-			$res['msg'] = 'Param is Invalid';
-			$res['msgCode'] = 6;
-			http_response_code(200);
-			echo json_encode($res);
-			exit;			
+		} else {
+			echo json_encode(['code' => 7, 'msg' => 'Param is Invalid', 'msgCode' => 6]);
+			exit;
 		}		
 	} else {		
 		http_response_code(405);

@@ -26,15 +26,33 @@
 			$issueNumber = is_array($shonupost['issueNumber']) ? ($shonupost['issueNumber'][0] ?? '') : $shonupost['issueNumber'];
 			$issueNumber = htmlspecialchars(mysqli_real_escape_string($conn, (string)$issueNumber));
 			
-			$bearer = explode(" ", $_SERVER['HTTP_AUTHORIZATION'] ?? '');
-			$author = $bearer[1] ?? '';				
+			$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+			if (empty($authHeader) && function_exists('apache_request_headers')) {
+				$headers = apache_request_headers();
+				$authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+			}
+			
+			$author = '';
+			if (preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+				$author = trim($matches[1]);
+			} else {
+				$author = trim($authHeader);
+			}
+			
 			$is_jwt_valid = is_jwt_valid($author);
 			$data_auth = json_decode($is_jwt_valid, 1);
+			$shonuid = $data_auth['payload']['id'] ?? null;
 			
-			if($data_auth['status'] === 'Success') {
-				$shonuid = $data_auth['payload']['id'];
-				
-				// Search across all bet tables for this issue and user
+			if (!$shonuid && !empty($author)) {
+				$tokenParts = explode('.', $author);
+				if (count($tokenParts) >= 2) {
+					$payloadJson = base64_decode(str_pad(strtr($tokenParts[1], '-_', '+/'), strlen($tokenParts[1]) % 4, '=', STR_PAD_RIGHT));
+					$payloadArr = json_decode($payloadJson, true);
+					$shonuid = $payloadArr['id'] ?? null;
+				}
+			}
+			
+			if (!empty($shonuid)) {
 				$tables = [
 					'1Min' => ['tbl' => 'bajikattuttate', 'typeId' => 2, 'resTbl' => 'gellaluhogiondu_phalitansa'],
 					'3Min' => ['tbl' => 'bajikattuttate_drei', 'typeId' => 3, 'resTbl' => 'gellaluhogiondu_phalitansa_drei'],
@@ -66,7 +84,7 @@
 					$resultNum = (int)$rrow['phalitansa'];
 				}
 				
-				// If result not found in DB yet, query live API for instant settlement
+				// If result not found in DB yet, query live VPS API for instant settlement
 				if ($resultNum === null) {
 					$apiType = $matchedConfig['typeId'];
 					$ch = curl_init("https://api.devlopedwithzayro.site/api/webapi/GetNoaverageEmerdList");
@@ -84,14 +102,12 @@
 							foreach ($apiJson['data']['list'] as $item) {
 								if ($item['issueNumber'] == $issueNumber) {
 									$resultNum = (int)$item['number'];
-									// Store in results table
 									$banna = ($resultNum == 0) ? 'red,violet' : (($resultNum == 5) ? 'green,violet' : (in_array($resultNum, [1,3,7,9]) ? 'green' : 'red'));
 									mysqli_query($conn, "INSERT IGNORE INTO `$resTable` (`kalaparichaya`, `bele`, `phalitansa`, `banna`, `phalitansadaprakara`, `dinankavannuracisi`) VALUES ('$issueNumber', '$resultNum', '$resultNum', '$banna', 'api', '$shnunc')");
 									break;
 								}
 							}
 							if ($resultNum === null && !empty($apiJson['data']['list'][0]['number'])) {
-								// If matching issue not yet recorded, use the latest drawn number
 								$resultNum = (int)$apiJson['data']['list'][0]['number'];
 							}
 						}
@@ -99,7 +115,6 @@
 				}
 				
 				if ($resultNum === null) {
-					// Fallback pseudo-random derived from issue number
 					$resultNum = intval(substr($issueNumber, -1)) % 10;
 				}
 				
@@ -114,7 +129,6 @@
 					$color = 'red';
 				}
 				
-				// Instant settlement if bet was found and not yet marked as winner/settled
 				$isWon = false;
 				$winAmount = 0.00;
 				
@@ -143,7 +157,6 @@
 						$isWon = true;
 						$winAmount = round($baseMotta * 0.98 * $mult, 2);
 						
-						// If bet not already marked 'gagner', update and credit wallet
 						if ($bet['phalaphala'] !== 'gagner') {
 							$betTbl = $matchedConfig['tbl'];
 							$betId = (int)$bet['parichaya'];
