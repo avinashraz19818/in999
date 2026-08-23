@@ -3,6 +3,7 @@ include "../../conn.php";
 include "../../functions2.php";
 
 header('Content-Type: application/json; charset=utf-8');
+header('Strict-Transport-Security: max-age=31536000');
 header('Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, Authorization');
 header('Access-Control-Allow-Credentials: true');
 $origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '*';
@@ -12,93 +13,118 @@ date_default_timezone_set("Asia/Kolkata");
 $shonubody = file_get_contents("php://input");
 $shonupost = json_decode($shonubody, true);
 
-function mapTypeId($frontendTypeId) {
-    $map = [
-        30 => 1,  // WinGo 30s
-        4  => 1,  // WinGo 30s tab
-        1  => 2,  // WinGo 1Min
-        2  => 3,  // WinGo 3Min
-        3  => 4,  // WinGo 5Min
-        5  => 5,  // WinGo 10Min
-    ];
-    return $map[$frontendTypeId] ?? $frontendTypeId;
-}
-
-function callExternalApi($endpoint, $payload) {
-    $apiBaseUrl = "https://api.devlopedwithzayro.site/api/webapi";
-    $ch = curl_init($apiBaseUrl . $endpoint);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    
-    if ($httpCode == 200 && $response) {
-        return json_decode($response, true);
-    }
-    return null;
-}
-
 $frontendTypeId = isset($shonupost['typeId']) ? intval($shonupost['typeId']) : (isset($_GET['typeId']) ? intval($_GET['typeId']) : 1);
-$typeId = mapTypeId($frontendTypeId);
-$pageNo = isset($shonupost['pageNo']) ? intval($shonupost['pageNo']) : 1;
-$pageSize = isset($shonupost['pageSize']) ? intval($shonupost['pageSize']) : 10;
+$pageNo = max(1, isset($shonupost['pageNo']) ? intval($shonupost['pageNo']) : 1);
+$pageSize = max(1, min(50, isset($shonupost['pageSize']) ? intval($shonupost['pageSize']) : 10));
 
-$externalData = callExternalApi("/GetNoaverageEmerdList", [
-    "typeId" => $typeId,
-    "pageSize" => $pageSize
-]);
-
-if ($externalData && isset($externalData['data']['list']) && !empty($externalData['data']['list'])) {
-    $list = $externalData['data']['list'];
-    foreach ($list as &$item) {
-        $item['typeId'] = $frontendTypeId;
-    }
-    echo json_encode([
-        'code' => 0,
-        'msg' => 'Succeed',
-        'msgCode' => 0,
-        'serviceNowTime' => date('Y-m-d H:i:s'),
-        'data' => [
-            'list' => $list,
-            'pageNo' => $pageNo,
-            'pageSize' => $pageSize,
-            'totalPage' => ceil(($externalData['data']['totalCount'] ?? 100) / $pageSize),
-            'totalCount' => $externalData['data']['totalCount'] ?? 100
-        ]
-    ]);
-    exit;
+if ($frontendTypeId == 30 || $frontendTypeId == 4 || $frontendTypeId == 0) {
+    $intervalSec = 30;
+    $typePrefix = "10005";
+    $resTable = 'gellaluhogiondu_phalitansa30';
+    $gameTag = 'WinGo_30S';
+} elseif ($frontendTypeId == 2) {
+    $intervalSec = 180;
+    $typePrefix = "10002";
+    $resTable = 'gellaluhogiondu_phalitansa_drei';
+    $gameTag = 'WinGo_3M';
+} elseif ($frontendTypeId == 3) {
+    $intervalSec = 300;
+    $typePrefix = "10003";
+    $resTable = 'gellaluhogiondu_phalitansa_funf';
+    $gameTag = 'WinGo_5M';
 } else {
-    // Local DB Fallback
-    $tbl = ($frontendTypeId == 30 || $frontendTypeId == 4) ? 'gellaluhogiondu_phalitansa30' : ($frontendTypeId == 1 ? 'gellaluhogiondu_phalitansa' : ($frontendTypeId == 2 ? 'gellaluhogiondu_phalitansa_drei' : 'gellaluhogiondu_phalitansa_funf'));
-    $offset = ($pageNo - 1) * $pageSize;
-    $res = mysqli_query($conn, "SELECT kalaparichaya, phalitansa, banna, bele FROM $tbl ORDER BY shonu DESC LIMIT $pageSize OFFSET $offset");
-    $list = [];
-    if ($res) {
-        while ($row = mysqli_fetch_assoc($res)) {
-            $list[] = [
-                'issueNumber' => $row['kalaparichaya'],
-                'number' => $row['phalitansa'],
-                'colour' => $row['banna'],
-                'premium' => $row['bele'],
-                'typeId' => $frontendTypeId
-            ];
-        }
-    }
-    echo json_encode([
-        'code' => 0,
-        'msg' => 'Succeed',
-        'msgCode' => 0,
-        'serviceNowTime' => date('Y-m-d H:i:s'),
-        'data' => [
-            'list' => $list,
-            'pageNo' => $pageNo,
-            'pageSize' => $pageSize,
-            'totalPage' => 10,
-            'totalCount' => 100
-        ]
-    ]);
+    $intervalSec = 60;
+    $typePrefix = "10001";
+    $resTable = 'gellaluhogiondu_phalitansa';
+    $gameTag = 'WinGo_1M';
 }
+
+if ($resTable !== 'gellaluhogiondu_phalitansa') {
+    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$resTable` LIKE `gellaluhogiondu_phalitansa`");
+}
+
+$now = time();
+$dayStart = strtotime(date('Y-m-d 00:00:00', $now));
+$secondsToday = $now - $dayStart;
+$currentSeq = intval(floor($secondsToday / $intervalSec)) + 1;
+$datePrefix = date('Ymd', $now);
+
+// Helper function to resolve deterministic result
+function get_draw_result($conn, $resTable, $gameTag, $issueNum, $drawTime) {
+    $q = mysqli_query($conn, "SELECT phalitansa, banna, bele FROM `$resTable` WHERE kalaparichaya = '$issueNum' LIMIT 1");
+    if ($q && mysqli_num_rows($q) > 0) {
+        $row = mysqli_fetch_assoc($q);
+        return [
+            'number' => (int)$row['phalitansa'],
+            'color'  => (string)$row['banna'],
+            'premium'=> (string)$row['bele']
+        ];
+    }
+    
+    // Deterministic hash algorithm matching WinGo standards
+    $hash = hexdec(substr(md5($gameTag . "_" . $issueNum), 0, 8));
+    $num = $hash % 10;
+    $prem = ($hash % 90000) + 10000;
+    $banna = ($num == 0) ? 'red,violet' : (($num == 5) ? 'green,violet' : (in_array($num, [1,3,7,9]) ? 'green' : 'red'));
+    
+    @mysqli_query($conn, "INSERT IGNORE INTO `$resTable` (`kalaparichaya`, `bele`, `phalitansa`, `banna`, `phalitansadaprakara`, `dinankavannuracisi`) VALUES ('$issueNum', '$prem', '$num', '$banna', 'auto', '$drawTime')");
+    
+    return [
+        'number' => $num,
+        'color'  => $banna,
+        'premium'=> (string)$prem
+    ];
+}
+
+$list = [];
+$startOffset = ($pageNo - 1) * $pageSize;
+
+// Completed draws are all sequences strictly < current active sequence
+for ($i = 0; $i < $pageSize; $i++) {
+    $seq = $currentSeq - 1 - $startOffset - $i;
+    if ($seq <= 0) break;
+    
+    $issueNum = $datePrefix . $typePrefix . sprintf('%04d', $seq);
+    $drawTs = $dayStart + ($seq * $intervalSec);
+    $drawTimeStr = date('Y-m-d H:i:s', $drawTs);
+    
+    $draw = get_draw_result($conn, $resTable, $gameTag, $issueNum, $drawTimeStr);
+    $num = $draw['number'];
+    $isBig = ($num >= 5);
+    
+    $list[] = [
+        'issueNumber'  => $issueNum,
+        'issue_number' => $issueNum,
+        'number'       => (string)$num,
+        'drawNumber'   => (string)$num,
+        'colour'       => $draw['color'],
+        'color'        => $draw['color'],
+        'premium'      => $draw['premium'],
+        'sum'          => (int)$num,
+        'state'        => 1,
+        'openTime'     => $drawTimeStr,
+        'drawTime'     => $drawTimeStr,
+        'typeId'       => $frontendTypeId,
+        'isBig'        => $isBig,
+        'bs'           => $isBig ? 'big' : 'small'
+    ];
+}
+
+$totalCount = max(100, $currentSeq - 1);
+$totalPage = max(1, ceil($totalCount / $pageSize));
+
+echo json_encode([
+    'code' => 0,
+    'msg' => 'Succeed',
+    'msgCode' => 0,
+    'serviceNowTime' => date('Y-m-d H:i:s'),
+    'data' => [
+        'list'       => $list,
+        'pageNo'     => $pageNo,
+        'pageSize'   => $pageSize,
+        'totalPage'  => $totalPage,
+        'totalCount' => $totalCount
+    ]
+]);
+exit;
+?>

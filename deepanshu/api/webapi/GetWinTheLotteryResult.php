@@ -54,10 +54,10 @@
 			
 			if (!empty($shonuid)) {
 				$tables = [
-					'1Min' => ['tbl' => 'bajikattuttate', 'typeId' => 2, 'resTbl' => 'gellaluhogiondu_phalitansa'],
-					'3Min' => ['tbl' => 'bajikattuttate_drei', 'typeId' => 3, 'resTbl' => 'gellaluhogiondu_phalitansa_drei'],
-					'5Min' => ['tbl' => 'bajikattuttate_funf', 'typeId' => 4, 'resTbl' => 'gellaluhogiondu_phalitansa_funf'],
-					'30S'  => ['tbl' => 'bajikattuttate30', 'typeId' => 1, 'resTbl' => 'gellaluhogiondu_phalitansa30']
+					'1Min' => ['tbl' => 'bajikattuttate', 'resTbl' => 'gellaluhogiondu_phalitansa', 'tag' => 'WinGo_1M'],
+					'3Min' => ['tbl' => 'bajikattuttate_drei', 'resTbl' => 'gellaluhogiondu_phalitansa_drei', 'tag' => 'WinGo_3M'],
+					'5Min' => ['tbl' => 'bajikattuttate_funf', 'resTbl' => 'gellaluhogiondu_phalitansa_funf', 'tag' => 'WinGo_5M'],
+					'30S'  => ['tbl' => 'bajikattuttate30', 'resTbl' => 'gellaluhogiondu_phalitansa30', 'tag' => 'WinGo_30S']
 				];
 				
 				$bet = null;
@@ -75,105 +75,80 @@
 					}
 				}
 				
+				$resTable = $matchedConfig['resTbl'];
+				$gameTag = $matchedConfig['tag'];
+				
+				// 1. Check local draw result
 				$resultNum = null;
-				$isWon = false;
-				$winAmount = 0.00;
-
-				// 1. Check if bet was ALREADY settled by cron/system
-				if ($bet && $bet['ergebnis'] !== null && $bet['ergebnis'] !== '') {
-					$resultNum = (int)$bet['ergebnis'];
-					if ($bet['phalaphala'] === 'gagner' || $bet['phalaphala'] === 'won') {
-						$isWon = true;
-						$winAmount = floatval($bet['sesabida']);
-					} else {
-						$isWon = false;
-						$winAmount = 0.00;
-					}
-				}
-
-				// 2. Check local results table
-				if ($resultNum === null) {
-					$resTable = $matchedConfig['resTbl'];
-					$rq = mysqli_query($conn, "SELECT phalitansa, banna FROM `$resTable` WHERE kalaparichaya = '$issueNumber' LIMIT 1");
-					if ($rq && mysqli_num_rows($rq) > 0) {
-						$rrow = mysqli_fetch_assoc($rq);
-						$resultNum = (int)$rrow['phalitansa'];
-					}
+				$color = null;
+				$rq = mysqli_query($conn, "SELECT phalitansa, banna FROM `$resTable` WHERE kalaparichaya = '$issueNumber' LIMIT 1");
+				if ($rq && mysqli_num_rows($rq) > 0) {
+					$rrow = mysqli_fetch_assoc($rq);
+					$resultNum = (int)$rrow['phalitansa'];
+					$color = (string)$rrow['banna'];
 				}
 				
-				// 3. If still null, query live VPS API for exact draw result
+				// 2. If not found in DB, calculate deterministically and save
 				if ($resultNum === null) {
-					$apiType = $matchedConfig['typeId'];
-					$ch = curl_init("https://api.devlopedwithzayro.site/api/webapi/GetWinTheLotteryResult");
-					curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-					curl_setopt($ch, CURLOPT_POST, true);
-					curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(["typeId" => $apiType, "issueNumber" => $issueNumber]));
-					curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
-					curl_setopt($ch, CURLOPT_TIMEOUT, 3);
-					$apiRes = curl_exec($ch);
-					curl_close($ch);
+					$hash = hexdec(substr(md5($gameTag . "_" . $issueNumber), 0, 8));
+					$resultNum = $hash % 10;
+					$prem = ($hash % 90000) + 10000;
+					$color = ($resultNum == 0) ? 'red,violet' : (($resultNum == 5) ? 'green,violet' : (in_array($resultNum, [1,3,7,9]) ? 'green' : 'red'));
 					
-					if ($apiRes) {
-						$apiJson = json_decode($apiRes, true);
-						if (isset($apiJson['data']['number'])) {
-							$resultNum = (int)$apiJson['data']['number'];
-							$banna = ($resultNum == 0) ? 'red,violet' : (($resultNum == 5) ? 'green,violet' : (in_array($resultNum, [1,3,7,9]) ? 'green' : 'red'));
-							$resTable = $matchedConfig['resTbl'];
-							mysqli_query($conn, "INSERT IGNORE INTO `$resTable` (`kalaparichaya`, `bele`, `phalitansa`, `banna`, `phalitansadaprakara`, `dinankavannuracisi`) VALUES ('$issueNumber', '$resultNum', '$resultNum', '$banna', 'api', '$shnunc')");
-						}
+					if ($resTable !== 'gellaluhogiondu_phalitansa') {
+						@mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$resTable` LIKE `gellaluhogiondu_phalitansa`");
 					}
-				}
-				
-				// 4. Fallback if still null
-				if ($resultNum === null) {
-					$resultNum = intval(substr($issueNumber, -1)) % 10;
+					@mysqli_query($conn, "INSERT IGNORE INTO `$resTable` (`kalaparichaya`, `bele`, `phalitansa`, `banna`, `phalitansadaprakara`, `dinankavannuracisi`) VALUES ('$issueNumber', '$prem', '$resultNum', '$color', 'auto', '$shnunc')");
 				}
 				
 				$num = (int)$resultNum;
-				if ($num == 0) {
-					$color = 'red,violet';
-				} elseif ($num == 5) {
-					$color = 'green,violet';
-				} elseif (in_array($num, [1, 3, 7, 9])) {
-					$color = 'green';
-				} else {
-					$color = 'red';
-				}
+				$isWon = false;
+				$winAmount = 0.00;
 				
-				// 5. If bet exists and wasn't previously marked 'gagner', calculate & settle now
-				if ($bet && ($bet['ergebnis'] === null || $bet['ergebnis'] === '')) {
-					$ojana = (int)$bet['ojana'];
-					$baseMotta = floatval($bet['ketebida'] ?? ($bet['sesabida'] / 0.98));
-					$mult = 0.0;
-					
-					if ($ojana >= 0 && $ojana <= 9) {
-						if ($ojana === $num) $mult = 9.0;
-					} elseif ($ojana == 10) { // Green
-						if (in_array($num, [1, 3, 7, 9])) $mult = 2.0;
-						elseif ($num == 5) $mult = 1.5;
-					} elseif ($ojana == 11) { // Red
-						if (in_array($num, [2, 4, 6, 8])) $mult = 2.0;
-						elseif ($num == 0) $mult = 1.5;
-					} elseif ($ojana == 12) { // Violet
-						if ($num == 0 || $num == 5) $mult = 4.5;
-					} elseif ($ojana == 13) { // Big
-						if ($num >= 5) $mult = 2.0;
-					} elseif ($ojana == 14) { // Small
-						if ($num < 5) $mult = 2.0;
-					}
-					
-					$betTbl = $matchedConfig['tbl'];
-					$betId = (int)$bet['parichaya'];
-
-					if ($mult > 0) {
+				// 3. Settle Bet
+				if ($bet) {
+					// Check if bet already settled
+					if ($bet['phalaphala'] === 'gagner' || $bet['phalaphala'] === 'won') {
 						$isWon = true;
-						$winAmount = round($baseMotta * 0.98 * $mult, 2);
-						mysqli_query($conn, "UPDATE `$betTbl` SET phalaphala = 'gagner', sesabida = '$winAmount', ergebnis = '$num' WHERE parichaya = $betId");
-						mysqli_query($conn, "UPDATE shonu_kaichila SET motta = motta + $winAmount WHERE balakedara = '$shonuid'");
-					} else {
+						$winAmount = floatval($bet['sesabida']);
+					} elseif ($bet['ergebnis'] !== null && $bet['ergebnis'] !== '' && $bet['phalaphala'] === 'perte') {
 						$isWon = false;
 						$winAmount = 0.00;
-						mysqli_query($conn, "UPDATE `$betTbl` SET phalaphala = 'perte', ergebnis = '$num' WHERE parichaya = $betId");
+					} else {
+						// Calculate settlement now
+						$ojana = (int)$bet['ojana'];
+						$baseMotta = floatval($bet['ketebida'] ?? ($bet['sesabida'] / 0.98));
+						$mult = 0.0;
+						
+						if ($ojana >= 0 && $ojana <= 9) {
+							if ($ojana === $num) $mult = 9.0;
+						} elseif ($ojana == 10) { // Green
+							if (in_array($num, [1, 3, 7, 9])) $mult = 2.0;
+							elseif ($num == 5) $mult = 1.5;
+						} elseif ($ojana == 11) { // Red
+							if (in_array($num, [2, 4, 6, 8])) $mult = 2.0;
+							elseif ($num == 0) $mult = 1.5;
+						} elseif ($ojana == 12) { // Violet
+							if ($num == 0 || $num == 5) $mult = 4.5;
+						} elseif ($ojana == 13) { // Big
+							if ($num >= 5) $mult = 2.0;
+						} elseif ($ojana == 14) { // Small
+							if ($num < 5) $mult = 2.0;
+						}
+						
+						$betTbl = $matchedConfig['tbl'];
+						$betId = (int)$bet['parichaya'];
+
+						if ($mult > 0) {
+							$isWon = true;
+							$winAmount = round($baseMotta * 0.98 * $mult, 2);
+							mysqli_query($conn, "UPDATE `$betTbl` SET phalaphala = 'gagner', sesabida = '$winAmount', ergebnis = '$num' WHERE parichaya = $betId");
+							mysqli_query($conn, "UPDATE shonu_kaichila SET motta = motta + $winAmount WHERE balakedara = '$shonuid'");
+						} else {
+							$isWon = false;
+							$winAmount = 0.00;
+							mysqli_query($conn, "UPDATE `$betTbl` SET phalaphala = 'perte', ergebnis = '$num' WHERE parichaya = $betId");
+						}
 					}
 				}
 				
