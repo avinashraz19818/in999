@@ -1,6 +1,11 @@
-<?php 
-include "../../conn.php";
-include "../../functions2.php";
+<?php
+/**
+ * WinGo GetNoaverageEmerdList Endpoint - Zero-Cron Result History
+ */
+
+include_once "../../conn.php";
+include_once "../../functions2.php";
+include_once "WingoEngine.php";
 
 header('Content-Type: application/json; charset=utf-8');
 header('Strict-Transport-Security: max-age=31536000');
@@ -8,127 +13,115 @@ header('Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Ac
 header('Access-Control-Allow-Credentials: true');
 $origin = isset($_SERVER['HTTP_ORIGIN']) ? $_SERVER['HTTP_ORIGIN'] : '*';
 header('Access-Control-Allow-Origin: ' . $origin);
+header('vary: Origin');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
 
 date_default_timezone_set("Asia/Kolkata");
+$nowTime = date("Y-m-d H:i:s");
+
 $shonubody = file_get_contents("php://input");
 $shonupost = json_decode($shonubody, true);
 
-$frontendTypeId = isset($shonupost['typeId']) ? intval($shonupost['typeId']) : (isset($_GET['typeId']) ? intval($_GET['typeId']) : 1);
-$pageNo = max(1, isset($shonupost['pageNo']) ? intval($shonupost['pageNo']) : 1);
-$pageSize = max(1, min(50, isset($shonupost['pageSize']) ? intval($shonupost['pageSize']) : 10));
+$typeId = isset($shonupost['typeId']) ? (int)$shonupost['typeId'] : (isset($_GET['typeId']) ? (int)$_GET['typeId'] : 1);
+$pageNo = isset($shonupost['pageNo']) ? max(1, (int)$shonupost['pageNo']) : (isset($_GET['pageNo']) ? max(1, (int)$_GET['pageNo']) : 1);
+$pageSize = isset($shonupost['pageSize']) ? max(1, min(100, (int)$shonupost['pageSize'])) : (isset($_GET['pageSize']) ? max(1, min(100, (int)$_GET['pageSize'])) : 10);
 
-if ($frontendTypeId == 30 || $frontendTypeId == 4 || $frontendTypeId == 0) {
-    $intervalSec = 30;
-    $typePrefix = "10005";
-    $resTable = 'gellaluhogiondu_phalitansa30';
-    $gameTag = 'WinGo_30S';
-} elseif ($frontendTypeId == 2) {
-    $intervalSec = 180;
-    $typePrefix = "10002";
-    $resTable = 'gellaluhogiondu_phalitansa_drei';
-    $gameTag = 'WinGo_3M';
-} elseif ($frontendTypeId == 3) {
-    $intervalSec = 300;
-    $typePrefix = "10003";
-    $resTable = 'gellaluhogiondu_phalitansa_funf';
-    $gameTag = 'WinGo_5M';
-} else {
-    $intervalSec = 60;
-    $typePrefix = "10001";
-    $resTable = 'gellaluhogiondu_phalitansa';
-    $gameTag = 'WinGo_1M';
-}
+// Run on-demand settlement to guarantee latest completed draw is recorded
+$cur = WingoEngine::autoSettleAndEnsureActive($conn, $typeId);
+$cfg = $cur['cfg'];
+$resultTable = $cfg['resultTable'];
+$curIssue = $cur['issueNumber'];
 
-if ($resTable !== 'gellaluhogiondu_phalitansa') {
-    @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$resTable` LIKE `gellaluhogiondu_phalitansa`");
-}
-
-$startOffset = ($pageNo - 1) * $pageSize;
+$offset = ($pageNo - 1) * $pageSize;
 $list = [];
+$totalCount = 0;
 
-// 1. Fetch real official results from DB table
-$res = mysqli_query($conn, "SELECT kalaparichaya, phalitansa, banna, bele, dinankavannuracisi FROM `$resTable` ORDER BY kalaparichaya DESC LIMIT $pageSize OFFSET $startOffset");
-if ($res && mysqli_num_rows($res) > 0) {
-    while ($row = mysqli_fetch_assoc($res)) {
-        $num = (int)$row['phalitansa'];
-        $isBig = ($num >= 5);
-        $list[] = [
-            'issueNumber'  => (string)$row['kalaparichaya'],
-            'issue_number' => (string)$row['kalaparichaya'],
-            'number'       => (string)$num,
-            'drawNumber'   => (string)$num,
-            'colour'       => (string)$row['banna'],
-            'color'        => (string)$row['banna'],
-            'premium'      => (string)$row['bele'],
-            'sum'          => (int)$num,
-            'state'        => 1,
-            'openTime'     => (string)$row['dinankavannuracisi'],
-            'drawTime'     => (string)$row['dinankavannuracisi'],
-            'typeId'       => $frontendTypeId,
-            'isBig'        => $isBig,
-            'bs'           => $isBig ? 'big' : 'small'
-        ];
+if ($conn) {
+    // Only return completed past issues (kalaparichaya < curIssue)
+    $query = "SELECT kalaparichaya, phalitansa, banna, bele 
+              FROM `$resultTable` 
+              WHERE kalaparichaya < '$curIssue' 
+              ORDER BY shonu DESC 
+              LIMIT $pageSize OFFSET $offset";
+
+    $res = mysqli_query($conn, $query);
+    if ($res && mysqli_num_rows($res) > 0) {
+        while ($row = mysqli_fetch_assoc($res)) {
+            $num = (int)$row['phalitansa'];
+            $color = !empty($row['banna']) ? $row['banna'] : WingoEngine::getColorForNumber($num);
+            $premium = !empty($row['bele']) ? (string)$row['bele'] : (string)(rand(1000, 9999) * 10 + $num);
+
+            $list[] = [
+                'issueNumber' => (string)$row['kalaparichaya'],
+                'number'      => $num,
+                'colour'      => $color,
+                'premium'     => $premium,
+            ];
+        }
+    }
+
+    $countRes = mysqli_query($conn, "SELECT COUNT(*) as total FROM `$resultTable` WHERE kalaparichaya < '$curIssue'");
+    if ($countRes && mysqli_num_rows($countRes) > 0) {
+        $countRow = mysqli_fetch_assoc($countRes);
+        $totalCount = (int)$countRow['total'];
     }
 }
 
-// 2. Fallback to UTC sequence generation if table is empty
-if (empty($list)) {
-    $nowUtc = time();
-    $dayStartUtc = strtotime(gmdate('Y-m-d 00:00:00', $nowUtc));
-    $secondsTodayUtc = $nowUtc - $dayStartUtc;
-    $currentSeq = intval(floor($secondsTodayUtc / $intervalSec)) + 1;
-    $datePrefix = gmdate('Ymd', $nowUtc);
+// Fallback fill if database has fewer historical rows
+if (count($list) < $pageSize && $pageNo === 1) {
+    $now = time();
+    $utcMidnight = strtotime(gmdate('Y-m-d 00:00:00', $now));
+    $secondsToday = $now - $utcMidnight;
+    $dateStr = gmdate('Ymd', $now);
+    $interval = $cfg['interval'];
+    $curSeq = intval($secondsToday / $interval) + 1;
 
-    for ($i = 0; $i < $pageSize; $i++) {
-        $seq = $currentSeq - 1 - $startOffset - $i;
-        if ($seq <= 0) break;
-        
-        $issueNum = $datePrefix . $typePrefix . sprintf('%04d', $seq);
-        $drawTs = $dayStartUtc + ($seq * $intervalSec);
-        $drawTimeStr = date('Y-m-d H:i:s', $drawTs + (5.5 * 3600));
-        
-        $hash = hexdec(substr(md5($gameTag . "_" . $issueNum), 0, 8));
-        $num = $hash % 10;
-        $prem = ($hash % 90000) + 10000;
-        $banna = ($num == 0) ? 'red,violet' : (($num == 5) ? 'green,violet' : (in_array($num, [1,3,7,9]) ? 'green' : 'red'));
-        $isBig = ($num >= 5);
-        
-        $list[] = [
-            'issueNumber'  => $issueNum,
-            'issue_number' => $issueNum,
-            'number'       => (string)$num,
-            'drawNumber'   => (string)$num,
-            'colour'       => $banna,
-            'color'        => $banna,
-            'premium'      => (string)$prem,
-            'sum'          => (int)$num,
-            'state'        => 1,
-            'openTime'     => $drawTimeStr,
-            'drawTime'     => $drawTimeStr,
-            'typeId'       => $frontendTypeId,
-            'isBig'        => $isBig,
-            'bs'           => $isBig ? 'big' : 'small'
-        ];
+    $existingIssues = array_column($list, 'issueNumber');
+
+    for ($i = 1; $i <= $pageSize && count($list) < $pageSize; $i++) {
+        $pastSeq = $curSeq - $i;
+        if ($pastSeq >= 1) {
+            $pastIssue = $dateStr . $cfg['gameCode'] . sprintf("%04d", $pastSeq);
+        } else {
+            $prevDay = gmdate('Ymd', $now - 86400);
+            $maxSeq = intval(86400 / $interval);
+            $pastIssue = $prevDay . $cfg['gameCode'] . sprintf("%04d", $maxSeq + $pastSeq);
+        }
+
+        if (!in_array($pastIssue, $existingIssues, true)) {
+            $hash = md5($typeId . '_' . $pastIssue);
+            $fallbackNum = hexdec(substr($hash, 0, 4)) % 10;
+            $fallbackColor = WingoEngine::getColorForNumber($fallbackNum);
+            $fallbackPremium = (string)(rand(1000, 9999) * 10 + $fallbackNum);
+
+            $list[] = [
+                'issueNumber' => $pastIssue,
+                'number'      => $fallbackNum,
+                'colour'      => $fallbackColor,
+                'premium'     => $fallbackPremium,
+            ];
+        }
     }
+    $totalCount = max($totalCount, count($list));
 }
 
-$countRes = mysqli_query($conn, "SELECT COUNT(*) as total FROM `$resTable`");
-$countRow = $countRes ? mysqli_fetch_assoc($countRes) : null;
-$totalCount = max(100, intval($countRow['total'] ?? 100));
-$totalPage = max(1, ceil($totalCount / $pageSize));
-
-echo json_encode([
+$response = [
     'code' => 0,
     'msg' => 'Succeed',
     'msgCode' => 0,
-    'serviceNowTime' => date('Y-m-d H:i:s'),
+    'serviceNowTime' => $nowTime,
     'data' => [
-        'list'       => $list,
+        'list'       => !empty($list) ? $list : null,
         'pageNo'     => $pageNo,
-        'pageSize'   => $pageSize,
-        'totalPage'  => $totalPage,
-        'totalCount' => $totalCount
+        'totalPage'  => max(1, (int)ceil($totalCount / $pageSize)),
+        'totalCount' => $totalCount,
     ]
-]);
-exit;
+];
+
+http_response_code(200);
+echo json_encode($response, JSON_UNESCAPED_UNICODE);
 ?>

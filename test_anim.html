@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animation Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.9.6/lottie.min.js"></script>
+    <style>
+        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; }
+        #anim-container {
+            width: 300px;
+            height: 300px;
+            margin: 50px auto;
+            background: #222;
+            border: 2px solid #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Wingo Animation Test</h2>
+    <div id="status">Loading...</div>
+    <div id="anim-container"></div>
+
+    <script>
+        // यहाँ अपना API URL डालें
+        const API_URL = '/deepanshu/api/webapi/GetWinTheLotteryResult.php'; 
+        
+        // जिस issueNumber का रिजल्ट आ चुका हो और WIN हो, वो डालें
+        const TEST_ISSUE = '20251211100051658'; 
+
+        async function checkResult() {
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ issueNumber: TEST_ISSUE })
+                });
+
+                const json = await response.json();
+                console.log("Full Response:", json); // Console में चेक करें
+
+                if (json.code === 0 && json.data && json.data.length > 0) {
+                    const winData = json.data[0]; // [0] बहुत जरुरी है
+
+                    if (winData.state === 1 && winData.animation) {
+                        document.getElementById('status').innerText = "Winner! Playing Animation...";
+                        
+                        // Lottie Player को स्टार्ट करें
+                        lottie.loadAnimation({
+                            container: document.getElementById('anim-container'),
+                            renderer: 'svg',
+                            loop: true,
+                            autoplay: true,
+                            // अगर Base64 String (Trick वाला कोड) है तो 'path' का यूज़ करें
+                            // अगर Raw JSON Object है तो 'animationData' का यूज़ करें
+                            
+                            // अभी हम मान रहे हैं कि आपने Base64 (Fake Link) वाला कोड लगाया है:
+                            path: winData.animation 
+                        });
+
+                    } else {
+                        document.getElementById('status').innerText = "Loss or No Animation Data.";
+                    }
+                } else {
+                    document.getElementById('status').innerText = "API Error: " + json.msg;
+                }
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById('status').innerText = "Fetch Error: " + error.message;
+            }
+        }
+
+        // Run function
+        checkResult();
+    </script>
+</body>
+</html>

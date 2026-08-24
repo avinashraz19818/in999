@@ -1,0 +1,100 @@
+{
+    "data": {
+        "typelist": [
+            {
+                "payID": 1,
+                "payTypeID": 0,
+                "payName": "QR Pay",
+                "paySysName": "QR Pay",
+                "payNameUrl": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon_20250409210555mter.jpg",
+                "payNameUrl2": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon2_20250409210555p8y3.jpg",
+                "minPrice": 0.0,
+                "maxPrice": 0.0,
+                "scope": null,
+                "typeName": "QR Pay",
+                "typeNameCode": 0,
+                "maxRechargeRifts": 0.0300,
+                "sort": 30
+            },
+            {
+                "payID": 2,
+                "payTypeID": 0,
+                "payName": "Online Pay",
+                "paySysName": "Online Pay",
+                "payNameUrl": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon_20250815053346sblu.jpg",
+                "payNameUrl2": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon2_202508150533466d1t.jpg",
+                "minPrice": 0.0,
+                "maxPrice": 0.0,
+                "scope": null,
+                "typeName": "Online Pay",
+                "typeNameCode": 0,
+                "maxRechargeRifts": 0.0300,
+                "sort": 28
+            },
+            {
+                "payID": 27,
+                "payTypeID": 0,
+                "payName": "Now UPI",
+                "paySysName": "Now UPI",
+                "payNameUrl": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon_202504111358165xj7.jpg",
+                "payNameUrl2": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon2_20250411135816yq65.jpg",
+                "minPrice": 0.0,
+                "maxPrice": 0.0,
+                "scope": null,
+                "typeName": "Now UPI",
+                "typeNameCode": 0,
+                "maxRechargeRifts": 0.0300,
+                "sort": 27
+            },
+            {
+                "payID": 26,
+                "payTypeID": 0,
+                "payName": "UPI x QR",
+                "paySysName": "ArUpiPay",
+                "payNameUrl": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon_20250514192506tf6q.jpg",
+                "payNameUrl2": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon2_20250514192506jkcc.jpg",
+                "minPrice": 0.0,
+                "maxPrice": 0.0,
+                "scope": null,
+                "typeName": "ArUpi Pay",
+                "typeNameCode": 9225,
+                "maxRechargeRifts": 0.0300,
+                "sort": 25
+            },
+            {
+                "payID": 11,
+                "payTypeID": 0,
+                "payName": "USDT",
+                "paySysName": "USDT",
+                "payNameUrl": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon_202504111358463w2c.jpg",
+                "payNameUrl2": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon2_202508150532448qkm.jpg",
+                "minPrice": 0.0,
+                "maxPrice": 0.0,
+                "scope": null,
+                "typeName": "USDT",
+                "typeNameCode": 9205,
+                "maxRechargeRifts": 0.0300,
+                "sort": 24
+            },
+            {
+                "payID": 21,
+                "payTypeID": 0,
+                "payName": "ARPay",
+                "paySysName": "ARPay",
+                "payNameUrl": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon_20250409211348s4mn.jpg",
+                "payNameUrl2": "https://ossimg.tashanedc.com/Tashanwin/payNameIcon/payNameIcon2_202504092113485b3v.jpg",
+                "minPrice": 0.0,
+                "maxPrice": 0.0,
+                "scope": null,
+                "typeName": "AR Pay",
+                "typeNameCode": 9223,
+                "maxRechargeRifts": 0.0300,
+                "sort": 16
+            }
+        ]
+    },
+    "code": 0,
+    "msg": "Succeed",
+    "msgCode": 0,
+    "serviceNowTime": "2025-09-17 13:28:06"
+}

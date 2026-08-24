@@ -1,0 +1,6 @@
+*.zip
+*.log
+*.sql
+*.tar.gz
+*.part
+error_log

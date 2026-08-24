@@ -1,45 +1,62 @@
 <?php
-include "../../conn.php";
+/**
+ * WinGo Draw Result Ingestion & Sync Endpoint
+ * Accepts draw results from client-side browser sync or VPS API relay.
+ */
 
-header('Content-Type: application/json');
+include_once "../../conn.php";
+include_once "../../functions2.php";
+include_once "WingoEngine.php";
+
+header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept');
+header('Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept, Authorization');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 
-$body = file_get_contents("php://input");
-$post = json_decode($body, true);
-
-if (!empty($post['gameCode']) && !empty($post['list']) && is_array($post['list'])) {
-    $gameCode = $post['gameCode'];
-    
-    if ($gameCode === 'WinGo_30S') {
-        $tbl = 'gellaluhogiondu_phalitansa30';
-    } elseif ($gameCode === 'WinGo_3M') {
-        $tbl = 'gellaluhogiondu_phalitansa_drei';
-    } elseif ($gameCode === 'WinGo_5M') {
-        $tbl = 'gellaluhogiondu_phalitansa_funf';
-    } else {
-        $tbl = 'gellaluhogiondu_phalitansa';
-    }
-    
-    if ($tbl !== 'gellaluhogiondu_phalitansa') {
-        @mysqli_query($conn, "CREATE TABLE IF NOT EXISTS `$tbl` LIKE `gellaluhogiondu_phalitansa`");
-    }
-    
-    foreach ($post['list'] as $item) {
-        $issue = mysqli_real_escape_string($conn, (string)$item['issueNumber']);
-        $num = intval($item['number']);
-        $color = mysqli_real_escape_string($conn, (string)$item['color']);
-        $prem = mysqli_real_escape_string($conn, (string)($item['premium'] ?? $num));
-        $now = date('Y-m-d H:i:s');
-        
-        @mysqli_query($conn, "INSERT INTO `$tbl` (`kalaparichaya`, `bele`, `phalitansa`, `banna`, `phalitansadaprakara`, `dinankavannuracisi`) 
-            VALUES ('$issue', '$prem', '$num', '$color', 'official', '$now')
-            ON DUPLICATE KEY UPDATE `bele`='$prem', `phalitansa`='$num', `banna`='$color'");
-    }
-    
-    echo json_encode(['status' => 'success', 'saved' => count($post['list'])]);
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
     exit;
 }
 
-echo json_encode(['status' => 'ignored']);
+date_default_timezone_set("Asia/Kolkata");
+$nowTime = date("Y-m-d H:i:s");
+
+$raw = file_get_contents("php://input");
+$post = json_decode($raw, true);
+
+$typeId = isset($post['typeId']) ? (int)$post['typeId'] : (isset($_GET['typeId']) ? (int)$_GET['typeId'] : 1);
+$list = $post['list'] ?? ($post['data']['list'] ?? []);
+
+// Single draw fallback
+if (empty($list) && isset($post['issueNumber']) && isset($post['number'])) {
+    $list = [$post];
+}
+
+$synced = 0;
+if (!empty($list) && is_array($list)) {
+    foreach ($list as $item) {
+        $issueNumber = trim((string)($item['issueNumber'] ?? $item['issue_number'] ?? ''));
+        if (empty($issueNumber)) continue;
+
+        $number = isset($item['number']) ? (int)$item['number'] : (isset($item['drawNumber']) ? (int)$item['drawNumber'] : 0);
+        $color = !empty($item['colour']) ? (string)$item['colour'] : (!empty($item['color']) ? (string)$item['color'] : null);
+        $premium = !empty($item['premium']) ? (string)$item['premium'] : null;
+
+        if (WingoEngine::settleDrawResult($conn, $typeId, $issueNumber, $number, $premium, $color)) {
+            $synced++;
+        }
+    }
+}
+
+// Always ensure active period is up to date
+$cur = WingoEngine::autoSettleAndEnsureActive($conn, $typeId);
+
+echo json_encode([
+    'code' => 0,
+    'msg' => "Synced {$synced} draws successfully",
+    'msgCode' => 0,
+    'synced_count' => $synced,
+    'current_issue' => $cur['issueNumber'],
+    'serviceNowTime' => $nowTime
+], JSON_UNESCAPED_UNICODE);
 ?>

@@ -24,7 +24,7 @@
         <link rel="stylesheet" href="/assets/css/index-bc4da944.css">
         <script>
             window.CONFIG = Object.freeze({
-                "VITE_API_URL": "/deepanshu",
+                "VITE_API_URL": "https://in999.club9.eu.cc/deepanshu",
                 "VITE_BASE_LANGUAGE": "en",
                 "VITE_BASE_PROJECTNAME": "ar031",
                 "VITE_PNGSTART": "ar031",
@@ -4529,35 +4529,34 @@
             </symbol>
         </svg>
         <div id="app"></div>
+        <!-- Live WinGo Result Auto-Sync Engine -->
         <script>
             (function() {
-                const drawUrls = {
-                    'WinGo_30S': 'https://draw.ar-lottery01.com/WinGo/WinGo_30S/GetHistoryIssuePage.json',
-                    'WinGo_1M':  'https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json',
-                    'WinGo_3M':  'https://draw.ar-lottery01.com/WinGo/WinGo_3M/GetHistoryIssuePage.json',
-                    'WinGo_5M':  'https://draw.ar-lottery01.com/WinGo/WinGo_5M/GetHistoryIssuePage.json'
-                };
-                async function syncLottery(code, url) {
+                const SYNC_URL = '/deepanshu/api/webapi/sync_draw.php';
+                const EXTERNAL_URL = 'https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json';
+                
+                async function syncDraws() {
                     try {
-                        const res = await fetch(url);
-                        if (!res.ok) return;
-                        const json = await res.json();
-                        if (json && json.data && json.data.list && json.data.list.length > 0) {
-                            fetch('/deepanshu/api/webapi/sync_draw.php', {
-                                method: 'POST',
-                                headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify({ gameCode: code, list: json.data.list.slice(0, 15) })
-                            }).catch(() => {});
+                        const res = await fetch(EXTERNAL_URL, { cache: 'no-store' });
+                        if (res.ok) {
+                            const json = await res.json();
+                            const list = json?.data?.list || json?.list;
+                            if (list && list.length > 0) {
+                                await fetch(SYNC_URL, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ typeId: 1, list: list })
+                                });
+                            }
                         }
-                    } catch (e) {}
-                }
-                function runSync() {
-                    for (const [code, url] of Object.entries(drawUrls)) {
-                        syncLottery(code, url);
+                    } catch (e) {
+                        // Silent failover to on-demand server engine
                     }
                 }
-                runSync();
-                setInterval(runSync, 3000);
+
+                // Initial sync & periodic sync every 15 seconds
+                syncDraws();
+                setInterval(syncDraws, 15000);
             })();
         </script>
         <script defer src="https://static.cloudflareinsights.com/beacon.min.js/vcd15cbe7772f49c399c6a5babf22c1241717689176015" integrity="sha512-ZpsOmlRQV6y907TI0dKBHq9Md29nnaEIPlkf84rnaERnq6zvWvPUqr2ft8M1aS28oN72PdrCzSjY4U6VaAw1EQ==" data-cf-beacon='{"version":"2024.11.0","token":"796721dfb4174f5abc132c6c43b95cd0","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
